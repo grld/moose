@@ -307,7 +307,7 @@ endif
 # TODO[JWP]: These plugins might also be able to use libtool...but it turned
 # out to be more trouble than it was worth to get working.
 #
-PLUGIN_FLAGS := -shared -fPIC -Wl,-undefined,dynamic_lookup
+PLUGIN_FLAGS := -shared -fPIC -fno-automatic -ffixed-line-length-132 -cpp -Wl,-undefined,dynamic_lookup
 %-$(METHOD).plugin : %.C
 	# we add include/base so that MooseConfig.h can be found, which is absent from the symlink dirs
 	@$(libmesh_CXX) $(libmesh_CPPFLAGS) $(ADDITIONAL_CPPFLAGS) $(CXXFLAGS) $(libmesh_CXXFLAGS) $(PLUGIN_FLAGS) $(app_INCLUDES) $(libmesh_INCLUDE) -I $(FRAMEWORK_DIR)/include/base $< -o $@

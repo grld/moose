@@ -29,10 +29,11 @@ PatternedHexMeshGenerator::validParams()
   MooseEnum pattern_boundary("none hexagon", "hexagon");
   params.addParam<MooseEnum>(
       "pattern_boundary", pattern_boundary, "The boundary shape of the patterned mesh.");
-  params.addParam<bool>("generate_core_metadata",
-                        false,
-                        "A Boolean parameter that controls whether the core related metadata "
-                        "is generated for other MOOSE objects or not.");
+  params.addParam<bool>(
+      "generate_core_metadata",
+      false,
+      "A Boolean parameter that controls whether the core related metadata "
+      "is generated for other MOOSE objects such as 'MultiControlDrumFunction' or not.");
   params.addRangeCheckedParam<unsigned int>("background_intervals",
                                             3,
                                             "background_intervals>0",
@@ -87,6 +88,7 @@ PatternedHexMeshGenerator::validParams()
       "provided along with 'background_block_id'.");
   params.addParam<std::vector<SubdomainName>>(
       "duct_block_names",
+      std::vector<SubdomainName>(),
       "Optional customized block names for each duct geometry block in 'assembly' mode; must be "
       "provided along with 'background_block_name'.");
   params.addRangeCheckedParam<boundary_id_type>("external_boundary_id",
@@ -94,8 +96,8 @@ PatternedHexMeshGenerator::validParams()
                                                 "Optional customized external boundary id.");
   params.addParam<bool>(
       "create_interface_boundaries", true, "Whether the interface boundary sidesets are created.");
-  params.addParam<std::string>("external_boundary_name",
-                               "Optional customized external boundary name.");
+  params.addParam<std::string>(
+      "external_boundary_name", std::string(), "Optional customized external boundary name.");
   params.addParam<bool>("deform_non_circular_region",
                         true,
                         "Whether the non-circular region (outside the rings) can be deformed.");
@@ -136,36 +138,28 @@ PatternedHexMeshGenerator::PatternedHexMeshGenerator(const InputParameters & par
     _duct_block_ids(isParamValid("duct_block_ids")
                         ? getParam<std::vector<subdomain_id_type>>("duct_block_ids")
                         : std::vector<subdomain_id_type>()),
-    _duct_block_names(isParamValid("duct_block_names")
-                          ? getParam<std::vector<SubdomainName>>("duct_block_names")
-                          : std::vector<SubdomainName>()),
+    _duct_block_names(getParam<std::vector<SubdomainName>>("duct_block_names")),
     _external_boundary_id(isParamValid("external_boundary_id")
                               ? getParam<boundary_id_type>("external_boundary_id")
                               : 0),
-    _external_boundary_name(isParamValid("external_boundary_name")
-                                ? getParam<std::string>("external_boundary_name")
-                                : std::string()),
+    _external_boundary_name(getParam<std::string>("external_boundary_name")),
     _create_interface_boundaries(getParam<bool>("create_interface_boundaries")),
     _hexagon_size_style(
         getParam<MooseEnum>("hexagon_size_style").template getEnum<PolygonSizeStyle>()),
-    _deform_non_circular_region(getParam<bool>("deform_non_circular_region")),
-    _pattern_pitch_meta(declareMeshProperty("pattern_pitch_meta", 0.0)),
-    _input_pitch_meta(declareMeshProperty("input_pitch_meta", 0.0)),
-    _is_control_drum_meta(declareMeshProperty<bool>("is_control_drum_meta", false)),
-    _control_drum_positions(
-        declareMeshProperty<std::vector<Point>>("control_drum_positions", std::vector<Point>())),
-    _control_drum_angles(
-        declareMeshProperty<std::vector<Real>>("control_drum_angles", std::vector<Real>())),
-    _control_drums_azimuthal_meta(declareMeshProperty<std::vector<std::vector<Real>>>(
-        "control_drums_azimuthal_meta", std::vector<std::vector<Real>>())),
-    _position_file_name(declareMeshProperty<std::string>("position_file_name",
-                                                         getParam<std::string>("position_file"))),
-    _hexagon_peripheral_trimmability(
-        declareMeshProperty<bool>("hexagon_peripheral_trimmability", !_generate_core_metadata)),
-    _hexagon_center_trimmability(declareMeshProperty<bool>("hexagon_center_trimmability", true)),
-    _peripheral_modifier_compatible(
-        declareMeshProperty<bool>("peripheral_modifier_compatible", _pattern_boundary == "hexagon"))
+    _deform_non_circular_region(getParam<bool>("deform_non_circular_region"))
 {
+  declareMeshProperty("pattern_pitch_meta", 0.0);
+  declareMeshProperty("input_pitch_meta", 0.0);
+  declareMeshProperty<bool>("is_control_drum_meta", false);
+  declareMeshProperty<std::vector<Point>>("control_drum_positions", std::vector<Point>());
+  declareMeshProperty<std::vector<Real>>("control_drum_angles", std::vector<Real>());
+  declareMeshProperty<std::vector<std::vector<Real>>>("control_drums_azimuthal_meta",
+                                                      std::vector<std::vector<Real>>());
+  declareMeshProperty<std::string>("position_file_name", getParam<std::string>("position_file"));
+  declareMeshProperty<bool>("hexagon_peripheral_trimmability", !_generate_core_metadata);
+  declareMeshProperty<bool>("hexagon_center_trimmability", true);
+  declareMeshProperty<bool>("peripheral_modifier_compatible", _pattern_boundary == "hexagon");
+
   const unsigned int n_pattern_layers = _pattern.size();
   declareMeshProperty("pattern_size", n_pattern_layers);
   if (n_pattern_layers % 2 == 0)
@@ -303,7 +297,7 @@ PatternedHexMeshGenerator::generate()
     else
     {
       _pattern_pitch = pattern_pitch_array.front();
-      _input_pitch_meta = _pattern_pitch;
+      setMeshProperty("input_pitch_meta", _pattern_pitch);
     }
   }
   else
@@ -351,7 +345,7 @@ PatternedHexMeshGenerator::generate()
       mooseError("In PatternedHexMeshGenerator ",
                  _name,
                  ": pitch metadata values of all input mesh generators must be identical.");
-    _input_pitch_meta = pitch_array.front();
+    setMeshProperty("input_pitch_meta", pitch_array.front());
     if (*std::max_element(num_sectors_per_side_array.begin(), num_sectors_per_side_array.end()) !=
         *std::min_element(num_sectors_per_side_array.begin(), num_sectors_per_side_array.end()))
       mooseError(
@@ -411,7 +405,7 @@ PatternedHexMeshGenerator::generate()
     }
   }
 
-  _pattern_pitch_meta = _pattern_pitch;
+  setMeshProperty("pattern_pitch_meta", _pattern_pitch);
 
   int x_mov = 0;
 
@@ -559,7 +553,7 @@ PatternedHexMeshGenerator::generate()
                             _create_interface_boundaries);
 
           if (extra_dist_shift != 0)
-            cutOffHexDeform(*tmp_peripheral_mesh, orientation, y_max_0, y_max_n, y_min, mesh_type);
+            cutOffPolyDeform(*tmp_peripheral_mesh, orientation, y_max_0, y_max_n, y_min, mesh_type);
 
           if (i == 0 && j == 0)
             out_mesh = std::move(tmp_peripheral_mesh);
@@ -634,7 +628,7 @@ PatternedHexMeshGenerator::generate()
 
   std::vector<Real> bd_x_list;
   std::vector<Real> bd_y_list;
-  std::vector<std::pair<Real, unsigned int>> node_azi_list;
+  std::vector<std::pair<Real, dof_id_type>> node_azi_list;
   const Point origin_pt = MooseMeshUtils::meshCentroidCalculator(*out_mesh);
   const Real origin_x = origin_pt(0);
   const Real origin_y = origin_pt(1);
@@ -712,13 +706,19 @@ PatternedHexMeshGenerator::generate()
                           i + 1)); // control drum index to help sort control_drum_id
     }
     std::sort(control_drum_tmp.begin(), control_drum_tmp.end());
+    std::vector<Point> control_drum_positions;
+    std::vector<Real> control_drum_angles;
+    std::vector<std::vector<Real>> control_drums_azimuthal_meta;
     for (unsigned int i = 0; i < control_drum_tmp.size(); ++i)
     {
-      _control_drum_positions.push_back(std::get<1>(control_drum_tmp[i]));
-      _control_drum_angles.push_back(std::get<0>(control_drum_tmp[i]));
-      _control_drums_azimuthal_meta.push_back(std::get<2>(control_drum_tmp[i]));
+      control_drum_positions.push_back(std::get<1>(control_drum_tmp[i]));
+      control_drum_angles.push_back(std::get<0>(control_drum_tmp[i]));
+      control_drums_azimuthal_meta.push_back(std::get<2>(control_drum_tmp[i]));
       control_drum_id_sorted.push_back(std::get<3>(control_drum_tmp[i]));
     }
+    setMeshProperty("control_drum_positions", control_drum_positions);
+    setMeshProperty("control_drum_angles", control_drum_angles);
+    setMeshProperty("control_drums_azimuthal_meta", control_drums_azimuthal_meta);
 
     if (_assign_control_drum_id)
     {
@@ -738,10 +738,10 @@ PatternedHexMeshGenerator::generate()
 
     if (_generate_control_drum_positions_file)
     {
-      std::ofstream pos_file(_position_file_name);
-      for (unsigned int i = 0; i < _control_drum_positions.size(); ++i)
-        pos_file << _control_drum_positions[i](0) << " " << _control_drum_positions[i](1)
-                 << " 0.0\n";
+      std::string position_file_name = getMeshProperty<std::string>("position_file_name", name());
+      std::ofstream pos_file(position_file_name);
+      for (unsigned int i = 0; i < control_drum_positions.size(); ++i)
+        pos_file << control_drum_positions[i](0) << " " << control_drum_positions[i](1) << " 0.0\n";
       pos_file.close();
     }
   }
@@ -775,7 +775,8 @@ PatternedHexMeshGenerator::generate()
         _external_boundary_id > 0 ? _external_boundary_id : (boundary_id_type)OUTER_SIDESET_ID) =
         _external_boundary_name;
   }
-  // assign sideset and nodeset maps
+  // Merge the boundary name maps of all the input meshed to generate the output mesh's boundary
+  // name maps
   auto & new_sideset_map = out_mesh->get_boundary_info().set_sideset_name_map();
   auto & new_nodeset_map = out_mesh->get_boundary_info().set_nodeset_name_map();
   for (unsigned int i = 0; i < meshes.size(); i++)
@@ -787,4 +788,183 @@ PatternedHexMeshGenerator::generate()
   }
 
   return dynamic_pointer_cast<MeshBase>(out_mesh);
+}
+
+void
+PatternedHexMeshGenerator::addPeripheralMesh(
+    ReplicatedMesh & mesh,
+    const unsigned int pattern,
+    const Real pitch,
+    const std::vector<Real> & extra_dist,
+    const std::vector<unsigned int> & num_sectors_per_side_array,
+    const std::vector<unsigned int> & peripheral_duct_intervals,
+    const Real rotation_angle,
+    const unsigned int mesh_type,
+    const bool create_interface_boundaries)
+{
+  std::vector<std::pair<Real, Real>> positions_inner;
+  std::vector<std::pair<Real, Real>> d_positions_outer;
+
+  std::vector<std::vector<unsigned int>> peripheral_point_index;
+  std::vector<std::pair<Real, Real>> sub_positions_inner;
+  std::vector<std::pair<Real, Real>> sub_d_positions_outer;
+
+  if (mesh_type == CORNER_MESH)
+    // corner mesh has three sides that need peripheral meshes.
+    // each element has three sub-elements, representing beginning, middle, and ending azimuthal
+    // points
+    peripheral_point_index = {{0, 1, 2}, {2, 3, 4}, {4, 5, 6}};
+  else
+    // side mesh has two sides that need peripheral meshes.
+    peripheral_point_index = {{0, 1, 2}, {2, 7, 8}};
+
+  // extra_dist includes background and ducts.
+  // Loop to calculate the positions of the boundaries.
+  for (unsigned int i = 0; i < extra_dist.size(); i++)
+  {
+    positionSetup(positions_inner,
+                  d_positions_outer,
+                  i == 0 ? 0.0 : extra_dist[i - 1],
+                  extra_dist[i],
+                  pitch,
+                  i);
+
+    // Loop for all applicable sides that need peripherial mesh (3 for corner and 2 for edge)
+    for (unsigned int peripheral_index = 0; peripheral_index < peripheral_point_index.size();
+         peripheral_index++)
+    {
+      // Loop for beginning, middle and ending positions of a side
+      for (unsigned int vector_index = 0; vector_index < 3; vector_index++)
+      {
+        sub_positions_inner.push_back(
+            positions_inner[peripheral_point_index[peripheral_index][vector_index]]);
+        sub_d_positions_outer.push_back(
+            d_positions_outer[peripheral_point_index[peripheral_index][vector_index]]);
+      }
+      auto meshp0 = buildSimplePeripheral(num_sectors_per_side_array[pattern],
+                                          peripheral_duct_intervals[i],
+                                          sub_positions_inner,
+                                          sub_d_positions_outer,
+                                          i,
+                                          create_interface_boundaries);
+      if (mesh.is_prepared()) // Need to prepare if the other is prepared to stitch
+        meshp0->prepare_for_use();
+
+      // rotate the peripheral mesh to the desired side of the hexagon.
+      MeshTools::Modification::rotate(*meshp0, rotation_angle, 0, 0);
+      mesh.stitch_meshes(*meshp0, OUTER_SIDESET_ID, OUTER_SIDESET_ID, TOLERANCE, true);
+      sub_positions_inner.resize(0);
+      sub_d_positions_outer.resize(0);
+    }
+  }
+}
+
+void
+PatternedHexMeshGenerator::positionSetup(std::vector<std::pair<Real, Real>> & positions_inner,
+                                         std::vector<std::pair<Real, Real>> & d_positions_outer,
+                                         const Real extra_dist_in,
+                                         const Real extra_dist_out,
+                                         const Real pitch,
+                                         const unsigned int radial_index) const
+{
+  positions_inner.resize(0);
+  d_positions_outer.resize(0);
+
+  // Nine sets of positions are generated here, as shown below.
+  // CORNER MESH Peripheral {0 1 2}, {2 3 4} and {4 5 6}
+  //           3       2   1   0
+  //            \      :   :   :
+  //             \     :   :   :
+  //      4.       .       :   :
+  //         ` .               :
+  //      5.   |               |
+  //         ` |               |
+  //      6.   |               |
+  //         ` |               |
+  //               .       .
+  //                   .
+  //
+  // EDGE MESH Peripheral {0 1 2} and {2 7 8}
+  //           8   7   2   1   0
+  //           :   :   :   :   :
+  //           :   :   :   :   :
+  //           :   :       :   :
+  //           :               :
+  //           |               |
+  //           |               |
+  //           |               |
+  //           |               |
+  //               .       .
+  //                   .
+
+  positions_inner.push_back(
+      std::make_pair(-pitch / 2.0,
+                     std::sqrt(3.0) * pitch / 6.0 +
+                         (radial_index != 0 ? std::sqrt(3.0) * pitch / 6.0 + extra_dist_in : 0.0)));
+  positions_inner.push_back(std::make_pair(
+      -pitch / 4.0,
+      std::sqrt(3.0) * pitch / 4.0 +
+          (radial_index != 0 ? std::sqrt(3.0) * pitch / 12.0 + extra_dist_in : 0.0)));
+  positions_inner.push_back(std::make_pair(
+      0.0, std::sqrt(3.0) * pitch / 3.0 + (radial_index != 0 ? extra_dist_in : 0.0)));
+  positions_inner.push_back(std::make_pair(
+      pitch / 4.0 + (radial_index != 0 ? pitch / 12.0 + std::sqrt(3.0) * extra_dist_in / 3.0 : 0.0),
+      std::sqrt(3.0) * pitch / 4.0 +
+          (radial_index != 0 ? pitch * std::sqrt(3.0) / 12.0 + extra_dist_in : 0.0)));
+  positions_inner.push_back(std::make_pair(
+      pitch / 2.0 + (radial_index != 0 ? std::sqrt(3.0) * extra_dist_in / 2.0 : 0.0),
+      std::sqrt(3.0) * pitch / 6.0 + (radial_index != 0 ? extra_dist_in / 2.0 : 0.0)));
+  positions_inner.push_back(std::make_pair(
+      pitch / 2.0 + (radial_index != 0 ? pitch / 8.0 + std::sqrt(3.0) * extra_dist_in / 2.0 : 0.0),
+      0.0 + (radial_index != 0 ? std::sqrt(3.0) * pitch / 24.0 + extra_dist_in / 2.0 : 0.0)));
+  positions_inner.push_back(std::make_pair(
+      pitch / 2.0 + (radial_index != 0 ? pitch / 4.0 + std::sqrt(3.0) * extra_dist_in / 2.0 : 0.0),
+      -std::sqrt(3.0) * pitch / 6.0 +
+          (radial_index != 0 ? std::sqrt(3.0) * pitch / 12.0 + extra_dist_in / 2.0 : 0.0)));
+  positions_inner.push_back(std::make_pair(
+      pitch / 4.0,
+      std::sqrt(3.0) * pitch / 4.0 +
+          (radial_index != 0 ? std::sqrt(3.0) * pitch / 12.0 + extra_dist_in : 0.0)));
+  positions_inner.push_back(
+      std::make_pair(pitch / 2.0,
+                     std::sqrt(3.0) * pitch / 6.0 +
+                         (radial_index != 0 ? std::sqrt(3.0) * pitch / 6.0 + extra_dist_in : 0.0)));
+
+  d_positions_outer.push_back(
+      std::make_pair(0.0,
+                     std::sqrt(3.0) * pitch / 6.0 + extra_dist_out -
+                         (radial_index != 0 ? std::sqrt(3.0) * pitch / 6.0 + extra_dist_in : 0.0)));
+  d_positions_outer.push_back(std::make_pair(
+      0.0,
+      std::sqrt(3.0) * pitch / 12.0 + extra_dist_out -
+          (radial_index != 0 ? std::sqrt(3.0) * pitch / 12.0 + extra_dist_in : 0.0)));
+  d_positions_outer.push_back(
+      std::make_pair(0.0, extra_dist_out - (radial_index != 0 ? extra_dist_in : 0.0)));
+  d_positions_outer.push_back(std::make_pair(
+      pitch / 12.0 + std::sqrt(3.0) * extra_dist_out / 3.0 -
+          (radial_index != 0 ? pitch / 12.0 + std::sqrt(3.0) * extra_dist_in / 3.0 : 0.0),
+      pitch * std::sqrt(3.0) / 12.0 + extra_dist_out -
+          (radial_index != 0 ? pitch * std::sqrt(3.0) / 12.0 + extra_dist_in : 0.0)));
+  d_positions_outer.push_back(
+      std::make_pair(std::sqrt(3.0) * extra_dist_out / 2.0 -
+                         (radial_index != 0 ? std::sqrt(3.0) * extra_dist_in / 2.0 : 0.0),
+                     extra_dist_out / 2.0 - (radial_index != 0 ? extra_dist_in / 2.0 : 0.0)));
+  d_positions_outer.push_back(std::make_pair(
+      pitch / 8.0 + std::sqrt(3.0) * extra_dist_out / 2.0 -
+          (radial_index != 0 ? pitch / 8.0 + std::sqrt(3.0) * extra_dist_in / 2.0 : 0.0),
+      std::sqrt(3.0) * pitch / 24.0 + extra_dist_out / 2.0 -
+          (radial_index != 0 ? std::sqrt(3.0) * pitch / 24.0 + extra_dist_in / 2.0 : 0.0)));
+  d_positions_outer.push_back(std::make_pair(
+      pitch / 4.0 + std::sqrt(3.0) * extra_dist_out / 2.0 -
+          (radial_index != 0 ? pitch / 4.0 + std::sqrt(3.0) * extra_dist_in / 2.0 : 0.0),
+      std::sqrt(3.0) * pitch / 12.0 + extra_dist_out / 2.0 -
+          (radial_index != 0 ? std::sqrt(3.0) * pitch / 12.0 + extra_dist_in / 2.0 : 0.0)));
+  d_positions_outer.push_back(std::make_pair(
+      0.0,
+      std::sqrt(3.0) * pitch / 12.0 + extra_dist_out -
+          (radial_index != 0 ? std::sqrt(3.0) * pitch / 12.0 + extra_dist_in : 0.0)));
+  d_positions_outer.push_back(
+      std::make_pair(0.0,
+                     std::sqrt(3.0) * pitch / 6.0 + extra_dist_out -
+                         (radial_index != 0 ? std::sqrt(3.0) * pitch / 6.0 + extra_dist_in : 0.0)));
 }

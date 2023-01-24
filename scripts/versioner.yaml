@@ -1,7 +1,6 @@
 # Add paths relative to repository root that should be taken into account when generating a hash
 packages:
   mpich:
-    - scripts/apptainer_generator.py
     - apptainer/mpich.def
     - conda/mpich/meta.yaml
     - conda/mpich/conda_build_config.yaml
@@ -23,6 +22,7 @@ packages:
     - conda/libmesh-vtk/conda_build_config.yaml
   moose:
     - apptainer/moose.def
+    - apptainer/remove_channels.def
     - conda/test-tools/meta.yaml
     - conda/test-tools/conda_build_config.yaml
     - conda/tools/meta.yaml

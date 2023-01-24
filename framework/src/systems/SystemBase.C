@@ -132,7 +132,8 @@ SystemBase::SystemBase(SubProblem & subproblem,
     _time_integrator(nullptr),
     _automatic_scaling(false),
     _verbose(false),
-    _solution_states_initialized(false)
+    _solution_states_initialized(false),
+    _solution_invalid(false)
 {
 }
 
@@ -1183,6 +1184,12 @@ SystemBase::matrixTagActive(TagID tag) const
   return tag < _matrix_tag_active_flags.size() && _matrix_tag_active_flags[tag];
 }
 
+void
+SystemBase::setSolutionInvalid(bool solution_invalid)
+{
+  _solution_invalid = solution_invalid;
+}
+
 unsigned int
 SystemBase::number() const
 {
@@ -1518,7 +1525,7 @@ SystemBase::cacheVarIndicesByFace(const std::vector<VariableName> & vars)
     return;
 
   // prepare a vector of MooseVariables from names
-  std::vector<const MooseVariableBase *> moose_vars;
+  std::vector<const MooseVariableFieldBase *> moose_vars;
   for (auto & v : vars)
   {
     // first make sure this is not a scalar variable
@@ -1528,7 +1535,7 @@ SystemBase::cacheVarIndicesByFace(const std::vector<VariableName> & vars)
     // now make sure this is a standard variable [not array/vector]
     if (getVariable(0, v).fieldType() != 0)
       mooseError("Variable ", v, " not a standard field variable [either VECTOR or ARRAY].");
-    moose_vars.push_back(&getVariable(0, v));
+    moose_vars.push_back(static_cast<MooseVariableFieldBase *>(&getVariable(0, v)));
   }
 
   _mesh.cacheVarIndicesByFace(moose_vars);
